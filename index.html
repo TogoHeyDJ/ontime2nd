@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bracket 2D to 3D Converter</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="/src/styles/main.css">
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand d-flex align-items-center" href="#">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-box me-2" viewBox="0 0 16 16">
+          <path d="M8.186 1.113a.5.5 0 0 0-.372 0L1.846 3.5 8 5.961 14.154 3.5 8.186 1.113zM15 4.239l-6.5 2.6v7.922l6.5-2.6V4.24zM7.5 14.762V6.838L1 4.239v7.923l6.5 2.6zM7.443.184a1.5 1.5 0 0 1 1.114 0l7.129 2.852A.5.5 0 0 1 16 3.5v8.662a1 1 0 0 1-.629.928l-7.185 2.874a.5.5 0 0 1-.372 0L.63 13.09a1 1 0 0 1-.63-.928V3.5a.5.5 0 0 1 .314-.464L7.443.184z"/>
+        </svg>
+        Bracket 2D→3D Converter
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item">
+            <a class="nav-link active" href="#" data-action="upload">
+              <i class="bi bi-upload me-1"></i>アップロード
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" data-action="dimensions">
+              <i class="bi bi-rulers me-1"></i>寸法編集
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" data-action="preview">
+              <i class="bi bi-badge-3d me-1"></i>3Dプレビュー
+            </a>
+          </li>
+        </ul>
+        <div class="d-flex">
+          <button id="exportBtn" class="btn btn-success" disabled>
+            <i class="bi bi-download me-1"></i>STEPエクスポート
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="container-fluid main-content">
+    <div class="row h-100">
+      <!-- Left Panel: File Upload & 2D Preview -->
+      <div class="col-md-4 panel-left">
+        <div class="card h-100">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>
+              <i class="bi bi-image me-2"></i>2D図面
+            </span>
+            <div class="btn-group btn-group-sm">
+              <button id="zoomIn2d" class="btn btn-outline-secondary" title="拡大">
+                <i class="bi bi-zoom-in"></i>
+              </button>
+              <button id="zoomOut2d" class="btn btn-outline-secondary" title="縮小">
+                <i class="bi bi-zoom-out"></i>
+              </button>
+              <button id="resetView2d" class="btn btn-outline-secondary" title="リセット">
+                <i class="bi bi-arrow-counterclockwise"></i>
+              </button>
+            </div>
+          </div>
+          <div class="card-body p-0">
+            <!-- Drop Zone -->
+            <div id="dropZone" class="drop-zone">
+              <div class="drop-zone-content">
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-cloud-arrow-up mb-3" viewBox="0 0 16 16">
+                  <path fill-rule="evenodd" d="M7.646 5.146a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 6.707V10.5a.5.5 0 0 1-1 0V6.707L6.354 7.854a.5.5 0 1 1-.708-.708l2-2z"/>
+                  <path d="M4.406 3.342A5.53 5.53 0 0 1 8 2c2.69 0 4.923 2 5.166 4.579C14.758 6.804 16 8.137 16 9.773 16 11.569 14.502 13 12.687 13H3.781C1.708 13 0 11.366 0 9.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383zm.653.757c-.757.653-1.153 1.44-1.153 2.056v.448l-.445.049C2.064 6.805 1 7.952 1 9.318 1 10.785 2.23 12 3.781 12h8.906C13.98 12 15 10.988 15 9.773c0-1.216-1.02-2.228-2.313-2.228h-.5v-.5C12.188 4.825 10.328 3 8 3a4.53 4.53 0 0 0-2.941 1.1z"/>
+                </svg>
+                <h5>ファイルをドラッグ＆ドロップ</h5>
+                <p class="text-muted mb-3">または</p>
+                <label class="btn btn-primary">
+                  <i class="bi bi-folder2-open me-1"></i>ファイルを選択
+                  <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg" hidden>
+                </label>
+                <p class="text-muted mt-2 small">対応形式: PDF, PNG, JPG</p>
+              </div>
+            </div>
+            <!-- 2D Preview Canvas -->
+            <div id="preview2dContainer" class="preview-container hidden">
+              <canvas id="preview2d"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center Panel: Dimensions Editor -->
+      <div class="col-md-3 panel-center">
+        <div class="card h-100">
+          <div class="card-header">
+            <i class="bi bi-sliders me-2"></i>寸法パラメータ
+          </div>
+          <div class="card-body">
+            <div id="dimensionsForm">
+              <div class="alert alert-info">
+                <i class="bi bi-info-circle me-2"></i>
+                図面をアップロードすると、自動的に寸法が抽出されます。
+              </div>
+
+              <!-- Bracket Type Selection -->
+              <div class="mb-3">
+                <label class="form-label fw-bold">
+                  <i class="bi bi-diagram-3 me-1"></i>ブラケットタイプ
+                </label>
+                <select id="bracketType" class="form-select">
+                  <option value="L">L型ブラケット</option>
+                  <option value="U">U型ブラケット</option>
+                  <option value="Z">Z型ブラケット</option>
+                  <option value="flat">フラットブラケット</option>
+                </select>
+              </div>
+
+              <!-- Dimension Inputs -->
+              <div class="dimensions-inputs">
+                <h6 class="border-bottom pb-2 mb-3">
+                  <i class="bi bi-rulers me-1"></i>基本寸法
+                </h6>
+
+                <div class="row g-2 mb-2">
+                  <div class="col-6">
+                    <label class="form-label small">幅 (W)</label>
+                    <div class="input-group input-group-sm">
+                      <input type="number" id="dimWidth" class="form-control" value="100" min="1">
+                      <span class="input-group-text">mm</span>
+                    </div>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small">高さ (H)</label>
+                    <div class="input-group input-group-sm">
+                      <input type="number" id="dimHeight" class="form-control" value="80" min="1">
+                      <span class="input-group-text">mm</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="row g-2 mb-2">
+                  <div class="col-6">
+                    <label class="form-label small">奥行き (D)</label>
+                    <div class="input-group input-group-sm">
+                      <input type="number" id="dimDepth" class="form-control" value="50" min="1">
+                      <span class="input-group-text">mm</span>
+                    </div>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small">板厚 (T)</label>
+                    <div class="input-group input-group-sm">
+                      <input type="number" id="dimThickness" class="form-control" value="3" min="0.5" step="0.5">
+                      <span class="input-group-text">mm</span>
+                    </div>
+                  </div>
+                </div>
+
+                <h6 class="border-bottom pb-2 mb-3 mt-4">
+                  <i class="bi bi-circle me-1"></i>穴パラメータ
+                </h6>
+
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" id="enableHoles" checked>
+                  <label class="form-check-label" for="enableHoles">穴を追加</label>
+                </div>
+
+                <div id="holeParams">
+                  <div class="row g-2 mb-2">
+                    <div class="col-6">
+                      <label class="form-label small">穴径</label>
+                      <div class="input-group input-group-sm">
+                        <input type="number" id="holeDiameter" class="form-control" value="6" min="1">
+                        <span class="input-group-text">mm</span>
+                      </div>
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small">穴数</label>
+                      <input type="number" id="holeCount" class="form-control form-control-sm" value="2" min="0" max="10">
+                    </div>
+                  </div>
+
+                  <div class="row g-2 mb-2">
+                    <div class="col-6">
+                      <label class="form-label small">穴位置X</label>
+                      <div class="input-group input-group-sm">
+                        <input type="number" id="holeOffsetX" class="form-control" value="15" min="0">
+                        <span class="input-group-text">mm</span>
+                      </div>
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small">穴位置Y</label>
+                      <div class="input-group input-group-sm">
+                        <input type="number" id="holeOffsetY" class="form-control" value="15" min="0">
+                        <span class="input-group-text">mm</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <h6 class="border-bottom pb-2 mb-3 mt-4">
+                  <i class="bi bi-bezier2 me-1"></i>角度・R
+                </h6>
+
+                <div class="row g-2 mb-2">
+                  <div class="col-6">
+                    <label class="form-label small">曲げ角度</label>
+                    <div class="input-group input-group-sm">
+                      <input type="number" id="bendAngle" class="form-control" value="90" min="0" max="180">
+                      <span class="input-group-text">°</span>
+                    </div>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small">曲げR</label>
+                    <div class="input-group input-group-sm">
+                      <input type="number" id="bendRadius" class="form-control" value="2" min="0" step="0.5">
+                      <span class="input-group-text">mm</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-grid gap-2 mt-4">
+                <button id="generateBtn" class="btn btn-primary">
+                  <i class="bi bi-gear me-1"></i>3Dモデル生成
+                </button>
+                <button id="analyzeBtn" class="btn btn-outline-secondary" disabled>
+                  <i class="bi bi-cpu me-1"></i>図面を再解析
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Panel: 3D Preview -->
+      <div class="col-md-5 panel-right">
+        <div class="card h-100">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>
+              <i class="bi bi-badge-3d me-2"></i>3Dプレビュー
+            </span>
+            <div class="btn-group btn-group-sm">
+              <button id="viewFront" class="btn btn-outline-secondary" title="正面">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                  <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm15 0a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2z"/>
+                </svg>
+              </button>
+              <button id="viewTop" class="btn btn-outline-secondary" title="上面">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                  <path d="M8 0l8 6v4l-8-6-8 6V6l8-6z"/>
+                </svg>
+              </button>
+              <button id="viewSide" class="btn btn-outline-secondary" title="側面">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                  <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
+                  <path d="M3 3h10v10H3z"/>
+                </svg>
+              </button>
+              <button id="viewIso" class="btn btn-outline-secondary active" title="アイソメ">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                  <path d="M8 1l7 4v6l-7 4-7-4V5l7-4zm0 1.236L2.196 5.5 8 8.736 13.804 5.5 8 2.236zM1.5 6.132v5.104L7.5 14.1V8.868l-6-3.736zm13 0l-6 3.736V14.1l6-2.864V6.132z"/>
+                </svg>
+              </button>
+              <button id="resetView3d" class="btn btn-outline-secondary" title="リセット">
+                <i class="bi bi-arrow-counterclockwise"></i>
+              </button>
+            </div>
+          </div>
+          <div class="card-body p-0 position-relative">
+            <div id="viewer3d"></div>
+            <!-- Controls Help -->
+            <div class="controls-help">
+              <small>
+                <span class="badge bg-secondary me-1">中ボタン</span>回転
+                <span class="badge bg-secondary me-1 ms-2">中+Ctrl</span>パン
+                <span class="badge bg-secondary me-1 ms-2">ホイール</span>ズーム
+              </small>
+            </div>
+            <!-- Loading Overlay -->
+            <div id="loadingOverlay" class="loading-overlay hidden">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
+              <p class="mt-2">モデル生成中...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <footer class="status-bar">
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+      <div>
+        <span id="statusText">
+          <i class="bi bi-info-circle me-1"></i>図面をアップロードしてください
+        </span>
+      </div>
+      <div>
+        <span id="modelInfo" class="text-muted"></span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Toast Container -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="toast" class="toast" role="alert">
+      <div class="toast-header">
+        <i class="bi bi-info-circle me-2"></i>
+        <strong class="me-auto" id="toastTitle">通知</strong>
+        <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+      </div>
+      <div class="toast-body" id="toastBody"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
