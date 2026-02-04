@@ -24,10 +24,11 @@ class App {
   }
 
   getDefaultDimensions() {
+    // Default values based on sample drawing: W273 × H637 × D185
     return {
-      width: 100,
-      height: 80,
-      depth: 50,
+      width: 273,
+      height: 637,
+      depth: 185,
       thickness: 3,
       bracketType: 'L',
       holes: {

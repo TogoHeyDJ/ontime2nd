@@ -1,9 +1,11 @@
 /**
  * ThreeViewer Component
  * 3D viewer with CATIA-style mouse controls
- * - Middle button: Rotate
- * - Middle + Ctrl: Pan
- * - Wheel: Zoom
+ *
+ * CATIA操作方式:
+ * - 平行移動(パン): 中ボタンドラッグ
+ * - 回転: 中ボタン + 左クリック + ドラッグ
+ * - ズーム: 中ボタン + 左クリック → 左離して中ボタンのみで上下ドラッグ
  */
 
 import * as THREE from 'three';
@@ -21,8 +23,12 @@ export class ThreeViewer {
     this.axesHelper = null;
 
     // CATIA-style controls state
-    this.isRotating = false;
-    this.isPanning = false;
+    this.mouseState = {
+      middleDown: false,
+      leftDown: false,
+      zoomMode: false,      // true when: middle+left pressed, then left released
+      wasRotating: false    // track if we were in rotation mode
+    };
     this.previousMouse = { x: 0, y: 0 };
 
     // Camera spherical coordinates
@@ -117,24 +123,38 @@ export class ThreeViewer {
     canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
     canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
     canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
-    canvas.addEventListener('mouseleave', (e) => this.onMouseUp(e));
-    canvas.addEventListener('wheel', (e) => this.onWheel(e));
+    canvas.addEventListener('mouseleave', (e) => this.onMouseLeave(e));
 
     // Prevent context menu on right click
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // Prevent default middle button behavior (auto-scroll)
+    canvas.addEventListener('auxclick', (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
 
     // Window resize
     window.addEventListener('resize', () => this.onResize());
   }
 
   onMouseDown(e) {
+    e.preventDefault();
+
     // Middle button (button 1)
     if (e.button === 1) {
-      e.preventDefault();
-      if (e.ctrlKey) {
-        this.isPanning = true;
-      } else {
-        this.isRotating = true;
+      this.mouseState.middleDown = true;
+      this.mouseState.zoomMode = false;
+      this.mouseState.wasRotating = false;
+      this.previousMouse.x = e.clientX;
+      this.previousMouse.y = e.clientY;
+    }
+
+    // Left button (button 0)
+    if (e.button === 0) {
+      this.mouseState.leftDown = true;
+      // If middle is already down, we're entering rotation mode
+      if (this.mouseState.middleDown) {
+        this.mouseState.wasRotating = true;
       }
       this.previousMouse.x = e.clientX;
       this.previousMouse.y = e.clientY;
@@ -142,13 +162,19 @@ export class ThreeViewer {
   }
 
   onMouseMove(e) {
-    if (!this.isRotating && !this.isPanning) return;
+    // Check if middle button is pressed
+    if (!this.mouseState.middleDown) return;
 
     const deltaX = e.clientX - this.previousMouse.x;
     const deltaY = e.clientY - this.previousMouse.y;
 
-    if (this.isRotating) {
-      // Rotate camera around target (CATIA style)
+    // Determine current mode based on CATIA logic
+    const isRotating = this.mouseState.middleDown && this.mouseState.leftDown;
+    const isZooming = this.mouseState.zoomMode;
+    const isPanning = this.mouseState.middleDown && !this.mouseState.leftDown && !this.mouseState.zoomMode;
+
+    if (isRotating) {
+      // ROTATION: Middle + Left button drag
       this.spherical.theta -= deltaX * 0.01;
       this.spherical.phi -= deltaY * 0.01;
 
@@ -156,11 +182,22 @@ export class ThreeViewer {
       this.spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, this.spherical.phi));
 
       this.updateCameraPosition();
-    } else if (this.isPanning) {
-      // Pan camera (CATIA style)
-      const panSpeed = 0.5;
+    } else if (isZooming) {
+      // ZOOM: After middle+left, release left, drag up/down with middle
+      const zoomSpeed = 0.01;
 
-      // Calculate right and up vectors
+      // Up = zoom in (decrease radius), Down = zoom out (increase radius)
+      this.spherical.radius += deltaY * this.spherical.radius * zoomSpeed;
+
+      // Clamp radius
+      this.spherical.radius = Math.max(10, Math.min(5000, this.spherical.radius));
+
+      this.updateCameraPosition();
+    } else if (isPanning) {
+      // PAN: Middle button only drag
+      const panSpeed = this.spherical.radius * 0.001;
+
+      // Calculate right and up vectors relative to camera
       const forward = new THREE.Vector3();
       forward.subVectors(this.target, this.camera.position).normalize();
 
@@ -170,7 +207,7 @@ export class ThreeViewer {
       const up = new THREE.Vector3();
       up.crossVectors(right, forward).normalize();
 
-      // Pan
+      // Pan the target
       this.target.addScaledVector(right, -deltaX * panSpeed);
       this.target.addScaledVector(up, deltaY * panSpeed);
 
@@ -182,26 +219,31 @@ export class ThreeViewer {
   }
 
   onMouseUp(e) {
-    this.isRotating = false;
-    this.isPanning = false;
-  }
-
-  onWheel(e) {
-    e.preventDefault();
-
-    // Zoom in/out (CATIA style - wheel zoom)
-    const zoomSpeed = 1.1;
-
-    if (e.deltaY > 0) {
-      this.spherical.radius *= zoomSpeed;
-    } else {
-      this.spherical.radius /= zoomSpeed;
+    // Left button released
+    if (e.button === 0) {
+      // If we were rotating (middle + left) and now release left,
+      // enter zoom mode while middle is still down
+      if (this.mouseState.middleDown && this.mouseState.wasRotating) {
+        this.mouseState.zoomMode = true;
+      }
+      this.mouseState.leftDown = false;
     }
 
-    // Clamp radius
-    this.spherical.radius = Math.max(50, Math.min(2000, this.spherical.radius));
+    // Middle button released
+    if (e.button === 1) {
+      this.resetMouseState();
+    }
+  }
 
-    this.updateCameraPosition();
+  onMouseLeave(e) {
+    this.resetMouseState();
+  }
+
+  resetMouseState() {
+    this.mouseState.middleDown = false;
+    this.mouseState.leftDown = false;
+    this.mouseState.zoomMode = false;
+    this.mouseState.wasRotating = false;
   }
 
   updateCameraPosition() {
