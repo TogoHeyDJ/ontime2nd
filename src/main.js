@@ -152,17 +152,22 @@ class App {
     if (!this.currentFile) return;
 
     this.showLoading(true);
-    this.updateStatus('図面を解析中...');
+    this.updateStatus('OCRエンジンを初期化中...');
 
     try {
       // Get the image data from the canvas
       const canvas = document.getElementById('preview2d');
       const imageData = canvas.toDataURL('image/png');
 
-      // Extract dimensions
-      const extractedValues = await this.dimensionExtractor.extract(imageData);
+      // Extract dimensions with progress callback
+      const extractedValues = await this.dimensionExtractor.extract(
+        imageData,
+        (progress) => {
+          this.updateStatus(`図面を解析中... ${progress}%`);
+        }
+      );
 
-      if (extractedValues && extractedValues.values) {
+      if (extractedValues && extractedValues.values && extractedValues.values.length > 0) {
         // Clear existing dimensions
         this.extractedDimensions = [];
         this.dimensionCounter = 0;
@@ -184,10 +189,18 @@ class App {
           document.getElementById('dimDepth').value = extractedValues.depth;
         }
 
-        this.showToast('解析完了', `${extractedValues.values.length}個の寸法を抽出しました`);
-      }
+        // Log raw OCR text for debugging
+        console.log('OCR Raw Text:', extractedValues.rawText);
+        console.log('Extracted Values:', extractedValues.values);
+        console.log('Confidence:', extractedValues.confidence);
 
-      this.updateStatus('解析完了 - 寸法を確認・編集してください');
+        const confidence = Math.round(extractedValues.confidence || 0);
+        this.showToast('解析完了', `${extractedValues.values.length}個の寸法を抽出 (信頼度: ${confidence}%)`);
+        this.updateStatus(`解析完了 - ${extractedValues.values.length}個の寸法を抽出しました`);
+      } else {
+        this.showToast('注意', '数値を検出できませんでした。図面の品質を確認してください。');
+        this.updateStatus('数値を検出できませんでした');
+      }
     } catch (error) {
       console.error('Analysis error:', error);
       this.showToast('エラー', '図面の解析に失敗しました: ' + error.message);

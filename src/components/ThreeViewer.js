@@ -174,9 +174,9 @@ export class ThreeViewer {
     const isPanning = this.mouseState.middleDown && !this.mouseState.leftDown && !this.mouseState.zoomMode;
 
     if (isRotating) {
-      // ROTATION: Middle + Left button drag
-      this.spherical.theta -= deltaX * 0.01;
-      this.spherical.phi -= deltaY * 0.01;
+      // ROTATION: Middle + Left button drag (CATIA style - reversed direction)
+      this.spherical.theta += deltaX * 0.01;
+      this.spherical.phi += deltaY * 0.01;
 
       // Clamp phi to prevent flipping
       this.spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, this.spherical.phi));

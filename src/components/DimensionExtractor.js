@@ -1,198 +1,181 @@
 /**
  * DimensionExtractor Component
- * Extracts dimensions from 2D drawings using image analysis
- *
- * In production, this would integrate with:
- * - OpenAI GPT-4 Vision API
- * - Google Cloud Vision API
- * - Claude Vision API
- * - Custom OCR + CV pipeline
+ * Extracts dimensions from 2D drawings using Tesseract.js OCR
  */
+
+import Tesseract from 'tesseract.js';
 
 export class DimensionExtractor {
   constructor() {
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d');
+    this.isProcessing = false;
   }
 
   /**
-   * Extract dimensions from image data
+   * Extract dimensions from image data using OCR
    * @param {string} imageDataUrl - Base64 encoded image
+   * @param {function} onProgress - Progress callback
    * @returns {Promise<Object>} Extracted dimensions with values array
    */
-  async extract(imageDataUrl) {
-    return new Promise((resolve) => {
+  async extract(imageDataUrl, onProgress = null) {
+    if (this.isProcessing) {
+      return null;
+    }
+
+    this.isProcessing = true;
+
+    try {
+      // Load image
+      const img = await this.loadImage(imageDataUrl);
+
+      // Preprocess image for better OCR
+      const processedImageUrl = this.preprocessImage(img);
+
+      // Run OCR with Tesseract.js
+      const ocrResult = await this.runOCR(processedImageUrl, onProgress);
+
+      // Extract numeric values from OCR result
+      const extractedValues = this.extractNumericValues(ocrResult.data.text);
+
+      // Sort and determine primary dimensions
+      const sortedBySize = [...extractedValues].sort((a, b) => b - a);
+
+      return {
+        values: extractedValues,
+        rawText: ocrResult.data.text,
+        width: sortedBySize[0] || null,
+        height: sortedBySize[1] || null,
+        depth: sortedBySize[2] || null,
+        confidence: ocrResult.data.confidence
+      };
+    } catch (error) {
+      console.error('OCR extraction error:', error);
+      throw error;
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  /**
+   * Load image from data URL
+   */
+  loadImage(imageDataUrl) {
+    return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => {
-        this.canvas.width = img.width;
-        this.canvas.height = img.height;
-        this.ctx.drawImage(img, 0, 0);
-
-        const imageData = this.ctx.getImageData(0, 0, img.width, img.height);
-
-        // Perform dimension extraction
-        const result = this.extractDimensionsFromImage(imageData, img.width, img.height);
-
-        resolve(result);
-      };
-
-      img.onerror = () => {
-        resolve(null);
-      };
-
+      img.onload = () => resolve(img);
+      img.onerror = reject;
       img.src = imageDataUrl;
     });
   }
 
   /**
-   * Extract dimension values from the image
-   * This is a demonstration - in production, use Vision AI for accurate OCR
+   * Preprocess image for better OCR accuracy
+   * - Convert to grayscale
+   * - Increase contrast
+   * - Apply threshold for cleaner text
    */
-  extractDimensionsFromImage(imageData, width, height) {
+  preprocessImage(img) {
+    this.canvas.width = img.width;
+    this.canvas.height = img.height;
+
+    // Draw original image
+    this.ctx.drawImage(img, 0, 0);
+
+    // Get image data
+    const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
     const data = imageData.data;
 
-    // Analyze the image to find potential dimension regions
-    const analysis = this.analyzeImage(data, width, height);
+    // Convert to grayscale and increase contrast
+    for (let i = 0; i < data.length; i += 4) {
+      // Grayscale
+      const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
 
-    // For demonstration, we'll return sample values based on the drawing structure
-    // In production, this would use OCR to read actual numbers from the image
+      // Increase contrast
+      let contrast = ((gray - 128) * 1.5) + 128;
+      contrast = Math.max(0, Math.min(255, contrast));
 
-    // Sample extracted values (simulating what would be read from the drawing)
-    const sampleValues = [
-      270,   // Main width
-      637,   // Main height
-      185,   // Depth
-      50,    // Top section
-      135,   // Middle dimension
-      100,   // Other dimension
-      40,    // Small dimension
-      15,    // Edge distance
-    ];
+      // Apply threshold for cleaner text (binarization)
+      const threshold = 180;
+      const value = contrast > threshold ? 255 : 0;
 
-    // Filter and sort values
-    const extractedValues = this.filterReasonableValues(sampleValues);
+      data[i] = value;     // R
+      data[i + 1] = value; // G
+      data[i + 2] = value; // B
+      // Alpha stays the same
+    }
 
-    // Determine primary dimensions (width, height, depth)
-    const sortedBySize = [...extractedValues].sort((a, b) => b - a);
+    // Put processed image back
+    this.ctx.putImageData(imageData, 0, 0);
 
-    return {
-      values: extractedValues,
-      width: sortedBySize[0] || 273,
-      height: sortedBySize[1] || 637,
-      depth: sortedBySize[2] || 185,
-      analysis: analysis
-    };
+    return this.canvas.toDataURL('image/png');
   }
 
   /**
-   * Analyze image to find dimension regions
+   * Run OCR using Tesseract.js
    */
-  analyzeImage(data, width, height) {
-    let darkPixels = 0;
-    let totalPixels = width * height;
-
-    // Count dark pixels (drawing lines)
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-
-      if (r < 100 && g < 100 && b < 100) {
-        darkPixels++;
+  async runOCR(imageUrl, onProgress) {
+    const result = await Tesseract.recognize(
+      imageUrl,
+      'eng+jpn', // English + Japanese for mixed content
+      {
+        logger: (m) => {
+          if (onProgress && m.status === 'recognizing text') {
+            onProgress(Math.round(m.progress * 100));
+          }
+        }
       }
-    }
+    );
 
-    const complexity = darkPixels / totalPixels;
+    return result;
+  }
 
-    // Find bounding box of drawing content
-    let minX = width, maxX = 0, minY = height, maxY = 0;
+  /**
+   * Extract numeric values from OCR text
+   * Looks for patterns like: 123, 123.5, 123mm, 123 mm, φ6, R5, etc.
+   */
+  extractNumericValues(text) {
+    if (!text) return [];
 
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const i = (y * width + x) * 4;
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
+    // Various patterns for dimension values
+    const patterns = [
+      /(\d+\.?\d*)\s*mm/gi,        // 123mm, 123.5 mm
+      /(\d+\.?\d*)\s*㎜/gi,        // Japanese mm
+      /φ\s*(\d+\.?\d*)/gi,         // φ6 (diameter)
+      /Φ\s*(\d+\.?\d*)/gi,         // Φ6 (diameter)
+      /R\s*(\d+\.?\d*)/gi,         // R5 (radius)
+      /(\d+)\s*[×x]\s*(\d+)/gi,    // 100×200 (dimensions)
+      /(?<![.\d])(\d{2,4})(?![.\d])/g, // Standalone 2-4 digit numbers
+    ];
 
-        if (r < 100 && g < 100 && b < 100) {
-          minX = Math.min(minX, x);
-          maxX = Math.max(maxX, x);
-          minY = Math.min(minY, y);
-          maxY = Math.max(maxY, y);
+    const values = new Set();
+
+    for (const pattern of patterns) {
+      const matches = text.matchAll(pattern);
+      for (const match of matches) {
+        // Extract all captured groups
+        for (let i = 1; i < match.length; i++) {
+          if (match[i]) {
+            const num = parseFloat(match[i]);
+            // Filter reasonable dimension values (1mm to 9999mm)
+            if (num >= 1 && num <= 9999 && !isNaN(num)) {
+              values.add(num);
+            }
+          }
         }
       }
     }
 
+    // Convert to array and sort descending
+    return Array.from(values).sort((a, b) => b - a);
+  }
+
+  /**
+   * Get processing status
+   */
+  getStatus() {
     return {
-      complexity,
-      boundingBox: {
-        minX, maxX, minY, maxY,
-        width: maxX - minX,
-        height: maxY - minY
-      },
-      aspectRatio: (maxX - minX) / (maxY - minY || 1)
+      isProcessing: this.isProcessing
     };
-  }
-
-  /**
-   * Filter dimension values to reasonable ranges
-   */
-  filterReasonableValues(values) {
-    return values
-      .filter(v => v > 0 && v < 10000) // Reasonable range for mm
-      .sort((a, b) => b - a); // Sort descending
-  }
-
-  /**
-   * Call Vision AI API for dimension extraction
-   * This is a placeholder for production implementation
-   *
-   * Example prompt for Vision AI:
-   * "この技術図面から全ての寸法値（数値）を読み取り、JSON配列で返してください。
-   *  単位はmmとして、数値のみを抽出してください。
-   *  例: [270, 185, 50, 30]"
-   */
-  async callVisionAPI(imageDataUrl) {
-    // Production implementation would call OpenAI, Claude, or Google Vision API
-    // Example for OpenAI GPT-4 Vision:
-    /*
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4-vision-preview',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `この技術図面から全ての寸法値を読み取り、以下のJSON形式で返してください:
-                {
-                  "values": [数値の配列],
-                  "width": 幅寸法,
-                  "height": 高さ寸法,
-                  "depth": 奥行き寸法
-                }`
-              },
-              {
-                type: 'image_url',
-                image_url: { url: imageDataUrl }
-              }
-            ]
-          }
-        ],
-        max_tokens: 1000
-      })
-    });
-
-    const data = await response.json();
-    return JSON.parse(data.choices[0].message.content);
-    */
-
-    throw new Error('Vision API not configured');
   }
 }
