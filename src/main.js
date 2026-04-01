@@ -1,5 +1,5 @@
 /**
- * Bracket 2D to 3D Converter - Main Application
+ * 2D図面→3D変換ツール - Main Application
  */
 
 import { FileUploader } from './components/FileUploader.js';
@@ -18,34 +18,24 @@ class App {
 
     this.currentFile = null;
     this.currentMesh = null;
-    this.dimensions = this.getDefaultDimensions();
+    this.extractedDimensions = [];
+    this.dimensionCounter = 0;
 
     this.init();
   }
 
   getDefaultDimensions() {
+    // Default values based on sample drawing: W273 × H637 × D185
     return {
-      width: 100,
-      height: 80,
-      depth: 50,
-      thickness: 3,
-      bracketType: 'L',
-      holes: {
-        enabled: true,
-        diameter: 6,
-        count: 2,
-        offsetX: 15,
-        offsetY: 15
-      },
-      bend: {
-        angle: 90,
-        radius: 2
-      }
+      width: 273,
+      height: 637,
+      depth: 185,
+      thickness: 3
     };
   }
 
   async init() {
-    console.log('Initializing Bracket 2D to 3D Converter...');
+    console.log('Initializing 2D to 3D Converter...');
 
     // Initialize components
     this.fileUploader = new FileUploader({
@@ -88,29 +78,18 @@ class App {
       this.analyzeDrawing();
     });
 
-    // Dimension inputs
-    const dimensionInputs = [
-      'dimWidth', 'dimHeight', 'dimDepth', 'dimThickness',
-      'holeDiameter', 'holeCount', 'holeOffsetX', 'holeOffsetY',
-      'bendAngle', 'bendRadius'
-    ];
+    // Add dimension button
+    document.getElementById('addDimensionBtn').addEventListener('click', () => {
+      this.addDimensionRow();
+    });
 
+    // Dimension inputs for 3D model
+    const dimensionInputs = ['dimWidth', 'dimHeight', 'dimDepth', 'dimThickness'];
     dimensionInputs.forEach(id => {
       const el = document.getElementById(id);
       if (el) {
         el.addEventListener('change', () => this.onDimensionChange());
       }
-    });
-
-    // Bracket type
-    document.getElementById('bracketType').addEventListener('change', () => {
-      this.onDimensionChange();
-    });
-
-    // Holes toggle
-    document.getElementById('enableHoles').addEventListener('change', (e) => {
-      document.getElementById('holeParams').style.display = e.target.checked ? 'block' : 'none';
-      this.onDimensionChange();
     });
 
     // View buttons
@@ -158,35 +137,70 @@ class App {
     // Enable analyze button
     document.getElementById('analyzeBtn').disabled = false;
 
+    // Hide upload hint, show manual input section
+    document.getElementById('uploadHint').classList.add('hidden');
+    document.getElementById('manualInputSection').classList.remove('hidden');
+
     this.updateStatus(`ファイル読み込み完了: ${file.name}`);
     this.showToast('成功', `${file.name} を読み込みました`);
 
-    // Auto-analyze if image
-    if (file.type.startsWith('image/') || file.type === 'application/pdf') {
-      await this.analyzeDrawing();
-    }
+    // Auto-analyze
+    await this.analyzeDrawing();
   }
 
   async analyzeDrawing() {
     if (!this.currentFile) return;
 
     this.showLoading(true);
-    this.updateStatus('図面を解析中...');
+    this.updateStatus('OCRエンジンを初期化中...');
 
     try {
       // Get the image data from the canvas
       const canvas = document.getElementById('preview2d');
       const imageData = canvas.toDataURL('image/png');
 
-      // Extract dimensions (simulated - in production, use Vision AI)
-      const extractedDimensions = await this.dimensionExtractor.extract(imageData);
+      // Extract dimensions with progress callback
+      const extractedValues = await this.dimensionExtractor.extract(
+        imageData,
+        (progress) => {
+          this.updateStatus(`図面を解析中... ${progress}%`);
+        }
+      );
 
-      if (extractedDimensions) {
-        this.applyExtractedDimensions(extractedDimensions);
-        this.showToast('解析完了', '寸法を抽出しました。必要に応じて調整してください。');
+      if (extractedValues && extractedValues.values && extractedValues.values.length > 0) {
+        // Clear existing dimensions
+        this.extractedDimensions = [];
+        this.dimensionCounter = 0;
+        document.getElementById('extractedDimensions').innerHTML = '';
+
+        // Add extracted dimensions
+        extractedValues.values.forEach((value, index) => {
+          this.addDimensionRow(value, `寸法${index + 1}`);
+        });
+
+        // Apply to 3D model parameters if we have enough dimensions
+        if (extractedValues.width) {
+          document.getElementById('dimWidth').value = extractedValues.width;
+        }
+        if (extractedValues.height) {
+          document.getElementById('dimHeight').value = extractedValues.height;
+        }
+        if (extractedValues.depth) {
+          document.getElementById('dimDepth').value = extractedValues.depth;
+        }
+
+        // Log raw OCR text for debugging
+        console.log('OCR Raw Text:', extractedValues.rawText);
+        console.log('Extracted Values:', extractedValues.values);
+        console.log('Confidence:', extractedValues.confidence);
+
+        const confidence = Math.round(extractedValues.confidence || 0);
+        this.showToast('解析完了', `${extractedValues.values.length}個の寸法を抽出 (信頼度: ${confidence}%)`);
+        this.updateStatus(`解析完了 - ${extractedValues.values.length}個の寸法を抽出しました`);
+      } else {
+        this.showToast('注意', '数値を検出できませんでした。図面の品質を確認してください。');
+        this.updateStatus('数値を検出できませんでした');
       }
-
-      this.updateStatus('解析完了 - 寸法を確認してください');
     } catch (error) {
       console.error('Analysis error:', error);
       this.showToast('エラー', '図面の解析に失敗しました: ' + error.message);
@@ -196,48 +210,88 @@ class App {
     }
   }
 
-  applyExtractedDimensions(dims) {
-    if (dims.width) document.getElementById('dimWidth').value = dims.width;
-    if (dims.height) document.getElementById('dimHeight').value = dims.height;
-    if (dims.depth) document.getElementById('dimDepth').value = dims.depth;
-    if (dims.thickness) document.getElementById('dimThickness').value = dims.thickness;
-    if (dims.bracketType) document.getElementById('bracketType').value = dims.bracketType;
-    if (dims.holeDiameter) document.getElementById('holeDiameter').value = dims.holeDiameter;
-    if (dims.bendAngle) document.getElementById('bendAngle').value = dims.bendAngle;
-    if (dims.bendRadius) document.getElementById('bendRadius').value = dims.bendRadius;
+  addDimensionRow(value = '', label = null) {
+    this.dimensionCounter++;
+    const id = `dim_${this.dimensionCounter}`;
+    const labelText = label || `寸法${this.dimensionCounter}`;
 
-    this.onDimensionChange();
+    const container = document.getElementById('extractedDimensions');
+
+    const row = document.createElement('div');
+    row.className = 'dimension-item';
+    row.id = id;
+    row.innerHTML = `
+      <span class="dimension-label">${labelText}:</span>
+      <div class="dimension-input">
+        <input type="number" class="form-control form-control-sm" value="${value}" min="0" step="0.1" data-dim-id="${id}">
+        <span class="dimension-unit">mm</span>
+      </div>
+      <button class="btn btn-sm btn-outline-danger btn-remove" data-remove-id="${id}" title="削除">
+        <i class="bi bi-x"></i>
+      </button>
+    `;
+
+    // Add remove event
+    row.querySelector('.btn-remove').addEventListener('click', (e) => {
+      const removeId = e.currentTarget.dataset.removeId;
+      this.removeDimensionRow(removeId);
+    });
+
+    container.appendChild(row);
+
+    this.extractedDimensions.push({
+      id,
+      label: labelText,
+      value: parseFloat(value) || 0
+    });
+
+    // Hide upload hint if visible
+    document.getElementById('uploadHint').classList.add('hidden');
+    document.getElementById('manualInputSection').classList.remove('hidden');
   }
 
-  onDimensionChange() {
-    this.dimensions = {
-      width: parseFloat(document.getElementById('dimWidth').value) || 100,
-      height: parseFloat(document.getElementById('dimHeight').value) || 80,
-      depth: parseFloat(document.getElementById('dimDepth').value) || 50,
+  removeDimensionRow(id) {
+    const row = document.getElementById(id);
+    if (row) {
+      row.remove();
+      this.extractedDimensions = this.extractedDimensions.filter(d => d.id !== id);
+    }
+  }
+
+  getDimensionsFromUI() {
+    return {
+      width: parseFloat(document.getElementById('dimWidth').value) || 273,
+      height: parseFloat(document.getElementById('dimHeight').value) || 637,
+      depth: parseFloat(document.getElementById('dimDepth').value) || 185,
       thickness: parseFloat(document.getElementById('dimThickness').value) || 3,
-      bracketType: document.getElementById('bracketType').value || 'L',
+      bracketType: 'L', // Default to L-bracket for now
       holes: {
-        enabled: document.getElementById('enableHoles').checked,
-        diameter: parseFloat(document.getElementById('holeDiameter').value) || 6,
-        count: parseInt(document.getElementById('holeCount').value) || 2,
-        offsetX: parseFloat(document.getElementById('holeOffsetX').value) || 15,
-        offsetY: parseFloat(document.getElementById('holeOffsetY').value) || 15
+        enabled: false,
+        diameter: 6,
+        count: 0,
+        offsetX: 15,
+        offsetY: 15
       },
       bend: {
-        angle: parseFloat(document.getElementById('bendAngle').value) || 90,
-        radius: parseFloat(document.getElementById('bendRadius').value) || 2
+        angle: 90,
+        radius: 2
       }
     };
   }
 
+  onDimensionChange() {
+    // Auto-regenerate model when dimensions change (optional)
+    // this.generateModel();
+  }
+
   async generateModel() {
-    this.onDimensionChange();
+    const dimensions = this.getDimensionsFromUI();
     this.showLoading(true);
     this.updateStatus('3Dモデルを生成中...');
 
     try {
       // Generate bracket geometry
-      const geometry = this.bracketGenerator.generate(this.dimensions);
+      const geometry = this.bracketGenerator.generate(dimensions);
 
       // Update 3D viewer
       this.currentMesh = this.threeViewer.setGeometry(geometry);
@@ -271,14 +325,15 @@ class App {
     this.updateStatus('STEPファイルを生成中...');
 
     try {
-      const stepData = await this.stepExporter.export(this.dimensions);
+      const dimensions = this.getDimensionsFromUI();
+      const stepData = await this.stepExporter.export(dimensions);
 
       // Download file
       const blob = new Blob([stepData], { type: 'application/step' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `bracket_${Date.now()}.step`;
+      a.download = `model_${Date.now()}.step`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

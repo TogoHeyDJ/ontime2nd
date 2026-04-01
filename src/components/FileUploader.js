@@ -18,6 +18,7 @@ export class FileUploader {
 
     this.currentZoom = 1;
     this.currentImage = null;
+    this.isProcessing = false;
 
     this.init();
   }
@@ -28,11 +29,22 @@ export class FileUploader {
     this.dropZone.addEventListener('dragleave', (e) => this.onDragLeave(e));
     this.dropZone.addEventListener('drop', (e) => this.onDrop(e));
 
-    // Click to select
-    this.dropZone.addEventListener('click', () => this.fileInput.click());
+    // Click to select - only trigger if not clicking on the label/button
+    this.dropZone.addEventListener('click', (e) => {
+      // Prevent double-triggering: if click is on label or button, don't trigger again
+      if (e.target.tagName === 'LABEL' ||
+          e.target.tagName === 'INPUT' ||
+          e.target.closest('label')) {
+        return;
+      }
+      this.fileInput.click();
+    });
 
-    // File input change
-    this.fileInput.addEventListener('change', (e) => this.onFileSelect(e));
+    // File input change - use a single handler and reset input afterward
+    this.fileInput.addEventListener('change', (e) => {
+      e.stopPropagation();
+      this.onFileSelect(e);
+    });
 
     // Preview pan/zoom with mouse
     this.previewContainer.addEventListener('wheel', (e) => this.onWheel(e));
@@ -63,17 +75,26 @@ export class FileUploader {
   }
 
   onFileSelect(e) {
+    if (this.isProcessing) return;
+
     const files = e.target.files;
-    if (files.length > 0) {
+    if (files && files.length > 0) {
       this.processFile(files[0]);
     }
+
+    // Reset the input so the same file can be selected again
+    this.fileInput.value = '';
   }
 
   async processFile(file) {
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+
     const validTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
 
     if (!validTypes.includes(file.type)) {
       alert('対応形式: PDF, PNG, JPG');
+      this.isProcessing = false;
       return;
     }
 
@@ -92,6 +113,8 @@ export class FileUploader {
     } catch (error) {
       console.error('Error processing file:', error);
       alert('ファイルの読み込みに失敗しました: ' + error.message);
+    } finally {
+      this.isProcessing = false;
     }
   }
 
